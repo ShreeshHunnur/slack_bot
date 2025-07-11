@@ -1,0 +1,5 @@
+slack_sdk
+flask
+requests
+gunicorn
+# Add other dependencies as needed, e.g. flask, fastapi, etc.
