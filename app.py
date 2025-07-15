@@ -1,59 +1,72 @@
-from flask import Flask, request
-from slack_sdk import WebClient
-import requests
 import os
+import re
+
+from slack_bolt import App
+from slack_bolt.adapter.socket_mode import SocketModeHandler
+from slack_sdk import WebClient
+from slack_sdk.errors import SlackApiError
+import requests
 
 
-app = Flask(__name__)
+# Install the Slack app and get xoxb- token in advance
+app = App(token="xoxb-336488795315-7637665953460-YOdzYLO1rMiEb38fduIx07GD")
+client = WebClient(token="xoxb-336488795315-7637665953460-YOdzYLO1rMiEb38fduIx07GD")
 
-SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN")  # Replace with your bot token
+@app.command("/hello-socket-mode")
+def hello_command(ack, body):
+    user_id = body["user_id"]
+    ack(f"Hi, <@{user_id}>!")
 
-client = WebClient(token=SLACK_BOT_TOKEN)
+@app.event("app_mention")
+def event_test(event, say):
+    # Print the message text to the log
+    text = event.get('text')
+    channel = event.get('channel')
+    ts = event.get('ts')
+    print(f"App mentioned in channel {channel}: {text} and the ts of msg is : {ts}")
+    try:
+        # Call the chat.postMessage method using the WebClient
+        result = client.chat_postMessage(
+            channel = channel,
+            thread_ts = ts,
+            text= "I am currently working on retrieving the answer for your question, please wait a moment...",
+        )
+        print(result)
 
-url = "https://aiplatform.dev51.cbf.dev.paypalinc.com/byoa/orch-sgundopant-434d2/api/v1/infer/8903d459-d249-49fb-883f-c3ee6aa42110"
-headers = {
-    "Content-Type": "application/json",
-    "X-UserID": "varvenkatesh"
-}
+    except SlackApiError as e:
+        print(e)
 
-@app.route('/', methods=['POST','GET'])
-def slack_events():
+    # Extract the question by removing the bot mention
+    # The mention is usually in the form <@BOTID>
+    question = re.sub(r"<@[^>]+>\s*", "", text).strip()
+    print(f"Extracted question: {question}")
 
-    if request.method == 'GET':
-        return "Slack Bot is running", 200
-    print(request)
-    data = request.json
-
-    # Slack URL verification challenge
-    if data and data.get('type') == 'url_verification':
-        print("URL,verification "+ data.get('challenge'))
-        return data.get('challenge'),200
-
-    # Handle app_mention event
-    if data and 'event' in data and data['event']['type'] == 'app_mention':
-        channel_id = data['event']['channel']
-        text = data['event']['text']
-
-        # Optionally, remove bot mention from text
-        # text = text.replace(f"<@{your_bot_user_id}>", "").strip()
-
-        # Prepare payload
-        payload = {
-            "inputs": {
-                "Chat Input": text
-            }
+    url = "https://aiplatform.dev51.cbf.dev.paypalinc.com/byoa/orch-varvenkate-71672/api/v1/infer/a3bb9330-6b83-43b9-b8bb-65d268483af4"
+    headers = {
+        "Content-Type": "application/json",
+        "X-UserID": "varvenkatesh"
+    }
+    payload = {
+        "inputs": {
+            "Chat Input": question
         }
-        # Make POST request
-        response = requests.post(url, headers=headers, json=payload)
-        # Print response
-        response_json = response.json()
-        answer = response_json["outputs"][0]["outputs"][0]["Chat Output"]
+    }
+    # Make POST request
+    response = requests.post(url, headers=headers, json=payload)
+    # Print response
+    response_json = response.json()
+    answer = response_json["outputs"][0]["outputs"][0]["Chat Output"]
+    try:
+        # Call the chat.postMessage method using the WebClient
+        result = client.chat_postMessage(
+            channel = channel,
+            thread_ts = ts,
+            markdown_text = answer
+        )
+        print(result)
 
-
-        # Post the result back to Slack channel
-        client.chat_postMessage(channel=channel_id, text=answer)
-
-    return '', 200
+    except SlackApiError as e:
+        print(e)
 
 if __name__ == "__main__":
-    app.run(port=5000)
+    SocketModeHandler(app, "xapp-1-A07JRK92ZU4-9192921111508-5221619a803dbebc2fa0730d9bb078780453d8e273714dc1804ce2cf1f53855e").start()
